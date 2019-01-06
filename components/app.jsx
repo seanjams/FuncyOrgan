@@ -31,18 +31,20 @@ const exampleStyle = {
 // (a^2 + b^2) * x,
 // ((a^2 + x^2) + a * b^2) / 10
 // ((a + b) ^ 2 - a ^ 2 - b ^ 2) * 1.27
+// (x^3+a*x+b) ^ (1/2)
 //
 // polar:
 // (r^ 2 + t) ^ 2 / 1000
 // 1000 * t * x
+// 100 * (sin(a / 10) + cos(b / 10))
 
 class App extends React.Component {
 	constructor(props) {
 		super(props);
 		this.state = {
 			rowSize: 200,
-			recFunc: "(a ^ 2 + b ^ 2) * x",
-			polarFunc: "(r ^ 2 + t) ^ 2 / 1000",
+			recFunc: "(x ^ 2 + y ^ 2) * n",
+			polarFunc: "(r ^ 2 + t) ^ 2 / (100 * n)",
 			range: 100,
 			size: 4,
 			polar: false,
@@ -79,43 +81,40 @@ class App extends React.Component {
 
 	updateCanvas = () => {
 		const { size, rowSize, polarFunc, recFunc, range, polar } = this.state;
-		const value = parseInt(this.state.value);
+		const n = parseInt(this.state.value);
 		const ctx = this.refs.canvas.getContext("2d");
 		ctx.clearRect(0, 0, size * rowSize, size * rowSize);
 
 		for (let b = 0; b < rowSize; b++) {
 			for (let a = 0; a < rowSize; a++) {
-				let expr, cellValue, colors;
+				let expr, value, colors, r, t;
+				const x = a - rowSize / 2;
+				const y = b - rowSize / 2;
 
 				try {
 					expr = this.parser.parse(polar ? polarFunc : recFunc);
 					if (polar) {
-						let dx, dy, r, t;
-						dx = a - rowSize / 2;
-						dy = rowSize / 2 - b;
-						r = Math.sqrt(dx ** 2 + dy ** 2);
-						t = Math.acos(dx / r);
+						r = Math.sqrt(x ** 2 + y ** 2);
+						t = Math.acos(x / r);
 
-						cellValue = expr.evaluate({ r, t, x: value });
+						value = expr.evaluate({ r, t, n });
 					} else {
-						cellValue = expr.evaluate({ a, b: rowSize - b, x: value });
+						value = expr.evaluate({ x, y, n });
 					}
 				} catch (e) {
-					if (e) {
-						ctx.fillStyle = "#FFFFFF";
-						ctx.fillRect(size * a, size * b, size, size);
-					}
+					console.warn(e);
+					return false;
 				}
 
 				colors = Array(3)
 					.fill(0)
 					.map((_, k) => {
-						let color = (((cellValue + 85 * k) % 510) + 510) % 510;
+						let color = (((value + 85 * k) % 510) + 510) % 510;
 						return color > 255 ? 510 - color : color;
 					});
 
 				ctx.fillStyle = `rgb(${colors.join(",")})`;
-				ctx.fillRect(size * a, size * b, size, size);
+				ctx.fillRect(size * a, size * (rowSize - b), size, size);
 			}
 		}
 	};
@@ -166,19 +165,19 @@ class App extends React.Component {
 					<h2>FuncyOrgan</h2>
 					<p style={{ width: "100%", fontSize: "14px" }}>
 						This is a prototype for a kind of color organ I want to make. Every
-						pixel of the grid has a corresponding (a,b) point in rectangular
+						pixel of the grid has a corresponding (x,y) point in rectangular
 						coordinates, or (r,t) point in polar coordinates, and displays a
 						color plucked from the spectrum by a single integer value, which we
 						compute using the function below.
 						<br />
 						<br />
 						Use the input to write a function of 3 variables, using the two
-						coordinate variables (a/b or r/t), and an input variable (x), as
+						coordinate variables (a/b or r/t), and an input variable (n), as
 						well as any constants. After clicking refresh, each pixel will be
 						assigned its own version of this function obtained by plugging in
 						its coordinates. This builds a 2 dimensional field of continous
-						functions of x with gradually changing parameters. Use the slider to
-						change the value for x and evaluate the pixels. The results map to
+						functions of n with gradually changing parameters. Use the slider to
+						change the value for n and evaluate the pixels. The results map to
 						integers, which map to colors on the spectrum. Some of the designs
 						can be pretty freakin' sweet.
 						<br />
@@ -197,13 +196,13 @@ class App extends React.Component {
 					<div style={exampleStyle}>
 						<em>(Rectangular)</em>
 						<span style={{ letterSpacing: "1.5px" }}>
-							f(a,b,x) = (a^2 + b^2) * x
+							f(x,y,n) = (x^2 + y^2) * n
 						</span>
 					</div>
 					<div style={exampleStyle}>
 						<em>(Polar)</em>
 						<span style={{ letterSpacing: "1.5px" }}>
-							f(r,t,x) = (r^ 2 + t) ^ 2 / 1000
+							f(r,t,n) = (r^ 2 + t) ^ 2 / (100 * n)
 						</span>
 					</div>
 					<div style={sliderContainerStyle}>
@@ -212,7 +211,7 @@ class App extends React.Component {
 								htmlFor="function"
 								style={{ paddingRight: "5px", letterSpacing: "1.5px" }}
 							>
-								<strong>{polar ? "f(r,t,x)=" : "f(a,b,x)="}</strong>
+								<strong>{polar ? "f(r,t,n)=" : "f(x,y,n)="}</strong>
 							</label>
 							<input
 								id="function"
@@ -243,7 +242,7 @@ class App extends React.Component {
 								id="range"
 							/>
 							<input
-								type="text"
+								type="number"
 								value={range}
 								onChange={this.onRangeChange}
 								onKeyPress={this.onRefresh}
@@ -257,9 +256,9 @@ class App extends React.Component {
 				</div>
 				<div style={canvasContainerStyle}>
 					<div style={yAxisStyle}>
-						{!polar && <span>{rowSize}</span>}
+						{!polar && <span>{`${rowSize / 2}`}</span>}
 						<span>{polar ? "0" : "b"}</span>
-						{!polar && <span>0</span>}
+						{!polar && <span>{`-${rowSize / 2}`}</span>}
 					</div>
 					<div style={{ display: "flex", flexDirection: "column" }}>
 						<canvas
@@ -268,9 +267,9 @@ class App extends React.Component {
 							height={size * rowSize}
 						/>
 						<div style={xAxisStyle}>
-							{!polar && <span>0</span>}
+							{!polar && <span>{`-${rowSize / 2}`}</span>}
 							<span>{polar ? "0" : "a"}</span>
-							{!polar && <span>{rowSize}</span>}
+							{!polar && <span>{`${rowSize / 2}`}</span>}
 						</div>
 					</div>
 				</div>

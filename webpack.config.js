@@ -36,6 +36,7 @@ module.exports = {
 		new HtmlWebpackPlugin({
 			title: "FuncyOrgan",
 			inject: "head",
+			favicon: "favicon.ico",
 		}),
 		// new BundleAnalyzerPlugin({
 		// 	analyzerMode: "static",
