@@ -1,5 +1,5 @@
 import React from "react";
-import ReactDOM from "react-dom";
+import math from "mathjs";
 
 // cool funcs to try:
 //
@@ -40,18 +40,14 @@ const exampleStyle = {
 	marginBottom: "10px",
 };
 
-const getRGB = val => {
-	val = ((val % 510) + 510) % 510;
-	return val > 255 ? 510 - val : val;
-};
+const opWhiteList = new Set(["+", "-", "*", "/"]);
 
 class App extends React.Component {
 	constructor(props) {
 		super(props);
 		this.state = {
 			rowSize: 700,
-			rectFunc: "(pow(x,2.0) + pow(y,2.0)) * n",
-			polarFunc: "pow(pow(r,2.0) + t,2.0) / (100.0 * n)",
+			func: "(r ^ 2 + t) ^ 2 / (100.0 * n)",
 			range: 100,
 			value: 50,
 			modRange: 1000,
@@ -93,15 +89,15 @@ class App extends React.Component {
 	};
 
 	static fallbackCopyTextToClipboard = text => {
-		var textArea = document.createElement("textarea");
+		const textArea = document.createElement("textarea");
 		textArea.value = text;
 		document.body.appendChild(textArea);
 		textArea.focus();
 		textArea.select();
 
 		try {
-			var successful = document.execCommand("copy");
-			var msg = successful ? "successful" : "unsuccessful";
+			const successful = document.execCommand("copy");
+			const msg = successful ? "successful" : "unsuccessful";
 			console.log("Fallback: Copying text command was " + msg);
 		} catch (err) {
 			console.error("Fallback: Oops, unable to copy", err);
@@ -133,34 +129,69 @@ class App extends React.Component {
 		App.onCopyToClipboard(window.location.href);
 	};
 
+	// Takes notmal math and turns it into GLSL math.
+	exprToGlsl= (expr) => {
+		const n = math.parse(expr);
+
+		const buildExpr = n => {
+			if (typeof n.value === "number") {
+				if (n % 1 !== 0) {
+					return n.toString();
+				} else {
+					return n.toString() + ".";
+				}
+			} else if (n.fn) {
+				if (opWhiteList.has(n.op)) {
+					return buildExpr(n.args[0]) + " " + n.op + " " + buildExpr(n.args[1]);
+				} else {
+					return n.fn + "(" + n.args.map(buildExpr).join(", ") + ")";
+				}
+			} else if (n.name) {
+				return n.name;
+			} else if (n.content) {
+				return "(" + buildExpr(n.content) + ")";
+			} else {
+				console.error("Unknown node", n);
+			}
+		};
+
+		try {
+			return buildExpr(n);
+		} catch (e) {
+			console.error("Parsing Error", e);
+			return false;
+		}
+	};
+
 	getFragmentFunction = () => {
-		const { polar, polarFunc, rectFunc } = this.state;
-		const rowSize = parseInt(this.state.rowSize);
-		const n = parseInt(this.state.value);
-		const modulo = parseInt(this.state.modulo);
-		const func = `
+		let { func } = this.state;
+		const rowSize = parseInt(this.state.rowSize).toFixed(1);
+		const n = parseInt(this.state.value).toFixed(1);
+		const modulo = parseInt(this.state.modulo).toFixed(1);
+
+		func = this.exprToGlsl(func);
+		if (!func) return false;
+
+		const frag = `
+		#define PI 3.14159265359
+
         precision mediump float;
 
         void main()
         {   
-            float n = ${n}.0;
-            float size = ${rowSize}.0;
-            float modulo = ${modulo}.0;
+            float n = ${n};
+            float size = ${rowSize};
+            float modulo = ${modulo};
             float x = gl_FragCoord.x - size / 2.0;
             float y = gl_FragCoord.y - size / 2.0;
             float val;
 
-            if(${polar})
-            {
-                float r = distance(vec2(x,y), vec2(0.0,0.0));
-                float t = atan(y/x);
-                val = ${polarFunc};
-            }
-            else
-            {
-                val = ${rectFunc};
-            }
-            
+			float r = distance(vec2(x,y), vec2(0.0,0.0));
+			float t = atan(y/x);
+			t = (x < 0.0 && y > 0.0 || x < 0.0 && y < 0.0) ? t + PI: t;
+			t = (x > 0.0 && y < 0.0) ? t + 2.0 * PI: t; 
+			val = ${func};
+                        
             float red = mod(val, 2.0 * modulo);
             float green = mod(val + modulo / 3.0, 2.0 * modulo);
             float blue = mod(val + 2.0 * modulo / 3.0, 2.0 * modulo);
@@ -171,9 +202,7 @@ class App extends React.Component {
             gl_FragColor = vec4(red / modulo, green / modulo, blue / modulo, 1.0);
         }`;
 
-		console.log(func);
-
-		return func;
+		return frag;
 	};
 
 	getVertexFunction = () => {
@@ -189,7 +218,6 @@ class App extends React.Component {
 	};
 
 	updateCanvas = () => {
-		const { rowSize, polarFunc, rectFunc, range, polar } = this.state;
 		const { gl } = this;
 		const n = parseInt(this.state.value);
 		if (!gl) {
@@ -228,7 +256,7 @@ class App extends React.Component {
 				gl.LINK_STATUS || !gl.getProgramParameter(program, gl.VALIDATE_STATUS)
 			)
 		) {
-			var info = gl.getProgramInfoLog(program);
+			const info = gl.getProgramInfoLog(program);
 			throw "Could not compile WebGL program. \n\n" + info;
 		}
 		// coordinates for corners of canvas
@@ -258,11 +286,9 @@ class App extends React.Component {
 	render = () => {
 		const {
 			rowSize,
-			polarFunc,
-			rectFunc,
+			func,
 			range,
 			value,
-			polar,
 			modulo,
 			modRange,
 		} = this.state;
@@ -278,7 +304,7 @@ class App extends React.Component {
 		const yAxisStyle = {
 			paddingRight: "5px",
 			display: "flex",
-			justifyContent: polar ? "center" : "space-between",
+			justifyContent: "space-between",
 			flexDirection: "column",
 			textAlign: "right",
 			width: "30px",
@@ -290,7 +316,7 @@ class App extends React.Component {
 		const xAxisStyle = {
 			width: "100%",
 			display: "flex",
-			justifyContent: polar ? "center" : "space-between",
+			justifyContent: "space-between",
 			paddingTop: "5px",
 			fontSize: "16px",
 			fontWeight: 600,
@@ -359,22 +385,19 @@ class App extends React.Component {
 								htmlFor="function"
 								style={{ paddingRight: "5px", letterSpacing: "1.5px" }}
 							>
-								<strong>{polar ? "f(r,t,n)=" : "f(x,y,n)="}</strong>
+								<strong>f(x,y,r,t,n)=</strong>
 							</label>
 							<input
 								id="function"
 								type="text"
-								value={polar ? polarFunc : rectFunc}
+								value={func}
 								style={{ width: "100%" }}
-								onChange={this.onChange(polar ? "polarFunc" : "rectFunc")}
+								onChange={this.onChange("func", false)}
 								onKeyPress={this.onRefresh}
 							/>
 						</div>
 						<div style={{ display: "flex", justifyContent: "flex-end" }}>
 							<button onClick={this.onRefresh}>Refresh</button>
-							<button onClick={this.onToggle("polar")}>
-								{polar ? "Rect." : "Polar"}
-							</button>
 						</div>
 					</div>
 					<div style={sliderContainerStyle}>
@@ -422,16 +445,16 @@ class App extends React.Component {
 				</div>
 				<div style={canvasContainerStyle}>
 					<div style={yAxisStyle}>
-						{!polar && <span>{`${rowSize / 2}`}</span>}
-						<span>{polar ? "0" : "b"}</span>
-						{!polar && <span>{`-${rowSize / 2}`}</span>}
+						<span>{`${rowSize / 2}`}</span>
+						<span>b</span>
+						<span>{`-${rowSize / 2}`}</span>
 					</div>
 					<div style={{ display: "flex", flexDirection: "column" }}>
 						<canvas ref="canvas" width={rowSize} height={rowSize} />
 						<div style={xAxisStyle}>
-							{!polar && <span>{`-${rowSize / 2}`}</span>}
-							<span>{polar ? "0" : "a"}</span>
-							{!polar && <span>{`${rowSize / 2}`}</span>}
+							<span>{`-${rowSize / 2}`}</span>
+							<span>a</span>
+							<span>{`${rowSize / 2}`}</span>
 						</div>
 					</div>
 				</div>

@@ -24,6 +24,7 @@
 	"homepage": "https://github.com/seanjams/FuncyOrgan#readme",
 	"dependencies": {
 		"lodash": "^4.17.11",
+		"mathjs": "^5.4.0",
 		"react": "^16.6.3",
 		"react-dom": "^16.6.3",
 		"tone": "^0.11.11"
