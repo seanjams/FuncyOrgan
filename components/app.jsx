@@ -1,6 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom";
 import ShadertoyReact from "shadertoy-react";
+import math from "mathjs";
 const Parser = require("expr-eval").Parser;
 
 const sliderStyle = {
@@ -42,8 +43,8 @@ class App extends React.Component {
 		super(props);
 		this.state = {
 			rowSize: 200,
-			recFunc: "(a ^ 2 + b ^ 2) * x",
-			polarFunc: "(r ^ 2 + t) ^ 2 / 1000",
+			recFunc: "(x ^ 2 + y ^ 2) * n",
+			polarFunc: "(a ^ 2 + t) ^ 2 / 1000",
 			range: 100,
 			size: 4,
 			polar: false,
@@ -159,13 +160,13 @@ class App extends React.Component {
 					<div style={exampleStyle}>
 						<em>(Rectangular)</em>
 						<span style={{ letterSpacing: "1.5px" }}>
-							f(a,b,x) = (a^2 + b^2) * x
+							f(x,y,n) = (x^2 + y^2) * n
 						</span>
 					</div>
 					<div style={exampleStyle}>
 						<em>(Polar)</em>
 						<span style={{ letterSpacing: "1.5px" }}>
-							f(r,t,x) = (r^ 2 + t) ^ 2 / 1000
+							f(r,t,n) = (r^ 2 + t) ^ 2 / 1000
 						</span>
 					</div>
 					<div style={sliderContainerStyle}>
@@ -174,7 +175,7 @@ class App extends React.Component {
 								htmlFor="function"
 								style={{ paddingRight: "5px", letterSpacing: "1.5px" }}
 							>
-								<strong>{polar ? "f(r,t,x)=" : "f(a,b,x)="}</strong>
+								<strong>{polar ? "f(r,t,n)=" : "f(x,y,n)="}</strong>
 							</label>
 							<input
 								id="function"
@@ -225,7 +226,7 @@ class App extends React.Component {
 					</div>
 					<div style={{ display: "flex", flexDirection: "column" }}>
 						<ShadertoyReact
-							fs={fs}
+							fs={buildFragmentShader(exprToGlsl(recFunc), value || range / 2)}
 							style={{
 								width: size * rowSize,
 								height: size * rowSize,
@@ -245,73 +246,102 @@ class App extends React.Component {
 
 export default App;
 
-const fs = `
-#define PI 3.14159265359
+const opWhiteList = new Set(["+", "-", "*", "/"]);
 
-// References:
-// https://www.shadertoy.com/view/ldjcDD
+// Takes notmal math and turns it into GLSL math.
+function exprToGlsl(expr) {
+	const n = math.parse(expr);
 
-vec3 hsl2rgb( in vec3 c )
-{
-    vec3 rgb = clamp( abs(mod(c.x*6.0+vec3(0.0,4.0,2.0),6.0)-3.0)-1.0, 0.0, 1.0 );
+	const buildExpr = n => {
+		if (typeof n.value === "number") {
+			if (n % 1 !== 0) {
+				return n.toString();
+			} else {
+				return n.toString() + ".";
+			}
+		} else if (n.name) {
+			return n.name;
+		} else if (n.fn) {
+			if (opWhiteList.has(n.op)) {
+				return buildExpr(n.args[0]) + " " + n.op + " " + buildExpr(n.args[1]);
+			} else {
+				return n.fn + "(" + n.args.map(buildExpr).join(", ") + ")";
+			}
+		} else if (n.content) {
+			return "(" + buildExpr(n.content) + ")";
+		} else {
+			console.error("Unknown node", n);
+		}
+	};
 
-    return c.z + c.y * (rgb-0.5)*(1.0-abs(2.0*c.z-1.0));
+	return buildExpr(n);
 }
 
+function buildFragmentShader(expr, n) {
+	n = n % 1 === 0 ? n.toString() + "." : n.toString();
 
-void mainImage( out vec4 fragColor, in vec2 fragCoord )
-{
+	return `
+	#define PI 3.14159265359
 
-    // normalized
-    vec2 p = vec2(fragCoord.xy / iResolution.xy);
+	// References:
+	// https://www.shadertoy.com/view/ldjcDD
 
-    // Polar coordinates:
-    // https://www.shadertoy.com/view/ltlXRf
-    vec2 relativePos = fragCoord.xy - (iResolution.xy / 2.0);
-    vec2 polar;
-    polar.y = sqrt(relativePos.x * relativePos.x + relativePos.y * relativePos.y);
-    polar.y /= iResolution.x / 2.0;
-    polar.y = 1.0 - polar.y;
-
-    polar.x = atan(relativePos.y, relativePos.x);
-    polar.x -= 1.57079632679;
-    if(polar.x < 0.0){
-		polar.x += 6.28318530718;
-    }
-    polar.x /= 6.28318530718;
-    polar.x = 1.0 - polar.x;
-
-    // Radius is also 0-1.
-    // Angle is not in radians, but 0-1.
+	vec3 hsl2rgb( in vec3 c )
+	{
+			vec3 rgb = clamp( abs(mod(c.x*6.0+vec3(0.0,4.0,2.0),6.0)-3.0)-1.0, 0.0, 1.0 );
+			return c.z + c.y * (rgb-0.5)*(1.0-abs(2.0*c.z-1.0));
+	}
 
 
-    float speed = 1. / 1000.;
-    float osc = 0.5; //sin(iTime * speed);
+	void mainImage( out vec4 fragColor, in vec2 fragCoord )
+	{
 
-    float size = 20.;
+			// normalized
+			vec2 p = vec2(fragCoord.xy / iResolution.xy);
+
+			// Polar coordinates:
+			// https://www.shadertoy.com/view/ltlXRf
+			vec2 relativePos = fragCoord.xy - (iResolution.xy / 2.0);
+			vec2 polar;
+			polar.y = sqrt(relativePos.x * relativePos.x + relativePos.y * relativePos.y);
+			polar.y /= iResolution.x / 2.0;
+			polar.y = 1.0 - polar.y;
+
+			polar.x = atan(relativePos.y, relativePos.x);
+			polar.x -= 1.57079632679;
+			if(polar.x < 0.0){
+			polar.x += 6.28318530718;
+			}
+			polar.x /= 6.28318530718;
+			polar.x = 1.0 - polar.x;
+
+			// Radius is also 0-1.
+			// Angle is not in radians, but 0-1.
 
 
-    float n_min = 20.0;
-    float n_max = 100.0;
-    float n = n_min + osc*(n_max - n_min);
+			float speed = 1. / 1000.;
+			float osc = 0.5; //sin(iTime * speed);
 
-    float r = polar.y * size;
-    float t = polar.x * 2. * PI;
-
-    float x = fragCoord.x / iResolution.x * size;
-    float y = fragCoord.y / iResolution.x * size;
+			float size = 20.;
 
 
-    // Cartesian example
-    float v = (pow(x,2.) + pow(y,2.)) * n;
+			//float n_min = 20.0;
+			//float n_max = 100.0;
+			//float n = n_min + osc*(n_max - n_min);
 
-    // Polar Example
-    // (r ^ 2 + t) ^ 2 / (100 * n)
-    // float v = pow(pow(r, 2.) + pow(mod(n,cos(t)), 2.), 2.);
+			float n = ${n};
 
+			float r = polar.y * size;
+			float t = polar.x * 2. * PI;
 
-    float hue = mod(v, 1.0);
-   	vec3 rgb = hsl2rgb(vec3(hue, 1.0, 0.6));
-    fragColor = vec4(rgb, 1.0);
+			float x = fragCoord.x / iResolution.x * size;
+			float y = fragCoord.y / iResolution.x * size;
+
+			float v = ${expr};
+
+			float hue = mod(v, 1.0);
+			 vec3 rgb = hsl2rgb(vec3(hue, 1.0, 0.6));
+			fragColor = vec4(rgb, 1.0);
+	}
+	`;
 }
-`;
