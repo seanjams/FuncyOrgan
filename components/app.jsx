@@ -401,7 +401,7 @@ class App extends React.Component {
 						</div>
 					</div>
 					<div style={sliderContainerStyle}>
-						<label htmlFor="range">x: {value}</label>
+						<label htmlFor="range">n: {value}</label>
 						<div style={{ display: "flex" }}>
 							<input
 								style={sliderStyle}
