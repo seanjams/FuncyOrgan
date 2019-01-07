@@ -341,19 +341,20 @@ class App extends React.Component {
 						This is a prototype for a kind of color organ I want to make. Every
 						pixel of the grid has a corresponding (x,y) point in rectangular
 						coordinates, or (r,t) point in polar coordinates, and displays a
-						color plucked from the spectrum by a single integer value, which we
-						compute using the function below.
+						color based on a single numerical input, which we compute using the
+						function below.
 						<br />
 						<br />
-						Use the input to write a function of 3 variables, using the two
-						coordinate variables (x/y or r/t), and an input variable (n), as
+						Use the input to write a function of up to 5 variables, using the four
+						coordinate variables (x, y, r, t), and an input variable (n), as
 						well as any constants. After clicking refresh, each pixel will be
 						assigned its own version of this function obtained by plugging in
 						its coordinates. This builds a 2 dimensional field of continous
-						functions of n with gradually changing parameters. Use the slider to
+						functions of n with gradually changing parameters. Use the sliders to
 						change the value for n and evaluate the pixels. The results map to
-						integers, which map to colors on the spectrum. Some of the designs
-						can be pretty freakin' sweet.
+						integers, which map to colors on the spectrum. Use the modulo slider
+						to adjust the scale of the mapping. Some of the designs can be pretty
+						freakin' sweet.
 						<br />
 						<br />
 						Eventually I want a version using actual animation software, and a
