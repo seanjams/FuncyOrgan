@@ -4,9 +4,6 @@ import ShadertoyReact from "shadertoy-react";
 import math from "mathjs";
 const Parser = require("expr-eval").Parser;
 
-// TODO: pass n as a uniform;
-// TODO: parse and only execute when it works.
-
 const sliderStyle = {
 	width: "100%",
 };
@@ -228,13 +225,10 @@ class App extends React.Component {
 						{!polar && <span>0</span>}
 					</div>
 					<div style={{ display: "flex", flexDirection: "column" }}>
-						<ShadertoyReact
-							fs={buildFragmentShader(exprToGlsl(recFunc))}
-							style={{
-								width: size * rowSize,
-								height: size * rowSize,
-							}}
-							uniforms={{ uN: { type: "1f", value: value || range / 2 } }}
+						<Shader
+							func={polar ? polarFunc : recFunc}
+							edgeSize={size * rowSize}
+							n={value || range / 2}
 						/>
 						<div style={xAxisStyle}>
 							{!polar && <span>0</span>}
@@ -246,6 +240,40 @@ class App extends React.Component {
 			</div>
 		);
 	};
+}
+
+class Shader extends React.Component {
+	constructor(props) {
+		super(props);
+		this.state = { func: exprToGlsl(props.func) };
+	}
+
+	componentWillReceiveProps(nextProps) {
+		try {
+			this.setState({ func: exprToGlsl(nextProps.func) }, () => {
+				console.log(this.state.func);
+			});
+		} catch (error) {
+			// Parse error.
+		}
+	}
+
+	render() {
+		const { edgeSize, n } = this.props;
+		const { func } = this.state;
+
+		return (
+			<ShadertoyReact
+				key={func}
+				fs={buildFragmentShader(func)}
+				style={{
+					width: edgeSize,
+					height: edgeSize,
+				}}
+				uniforms={{ uN: { type: "1f", value: n } }}
+			/>
+		);
+	}
 }
 
 export default App;
