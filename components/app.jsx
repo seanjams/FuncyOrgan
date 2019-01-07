@@ -4,6 +4,9 @@ import ShadertoyReact from "shadertoy-react";
 import math from "mathjs";
 const Parser = require("expr-eval").Parser;
 
+// TODO: pass n as a uniform;
+// TODO: parse and only execute when it works.
+
 const sliderStyle = {
 	width: "100%",
 };
@@ -226,11 +229,12 @@ class App extends React.Component {
 					</div>
 					<div style={{ display: "flex", flexDirection: "column" }}>
 						<ShadertoyReact
-							fs={buildFragmentShader(exprToGlsl(recFunc), value || range / 2)}
+							fs={buildFragmentShader(exprToGlsl(recFunc))}
 							style={{
 								width: size * rowSize,
 								height: size * rowSize,
 							}}
+							uniforms={{ uN: { type: "1f", value: value || range / 2 } }}
 						/>
 						<div style={xAxisStyle}>
 							{!polar && <span>0</span>}
@@ -277,9 +281,7 @@ function exprToGlsl(expr) {
 	return buildExpr(n);
 }
 
-function buildFragmentShader(expr, n) {
-	n = n % 1 === 0 ? n.toString() + "." : n.toString();
-
+function buildFragmentShader(expr) {
 	return `
 	#define PI 3.14159265359
 
@@ -318,18 +320,10 @@ function buildFragmentShader(expr, n) {
 			// Radius is also 0-1.
 			// Angle is not in radians, but 0-1.
 
-
 			float speed = 1. / 1000.;
-			float osc = 0.5; //sin(iTime * speed);
-
 			float size = 20.;
 
-
-			//float n_min = 20.0;
-			//float n_max = 100.0;
-			//float n = n_min + osc*(n_max - n_min);
-
-			float n = ${n};
+			float n = uN; // From uniforms prop.
 
 			float r = polar.y * size;
 			float t = polar.x * 2. * PI;
