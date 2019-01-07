@@ -1,5 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom";
+import ShadertoyReact from "shadertoy-react";
 const Parser = require("expr-eval").Parser;
 
 const sliderStyle = {
@@ -79,45 +80,6 @@ class App extends React.Component {
 
 	updateCanvas = () => {
 		const { size, rowSize, polarFunc, recFunc, range, polar } = this.state;
-		const value = parseInt(this.state.value);
-		const ctx = this.refs.canvas.getContext("2d");
-		ctx.clearRect(0, 0, size * rowSize, size * rowSize);
-
-		for (let b = 0; b < rowSize; b++) {
-			for (let a = 0; a < rowSize; a++) {
-				let expr, cellValue, colors;
-
-				try {
-					expr = this.parser.parse(polar ? polarFunc : recFunc);
-					if (polar) {
-						let dx, dy, r, t;
-						dx = a - rowSize / 2;
-						dy = rowSize / 2 - b;
-						r = Math.sqrt(dx ** 2 + dy ** 2);
-						t = Math.acos(dx / r);
-
-						cellValue = expr.evaluate({ r, t, x: value });
-					} else {
-						cellValue = expr.evaluate({ a, b: rowSize - b, x: value });
-					}
-				} catch (e) {
-					if (e) {
-						ctx.fillStyle = "#FFFFFF";
-						ctx.fillRect(size * a, size * b, size, size);
-					}
-				}
-
-				colors = Array(3)
-					.fill(0)
-					.map((_, k) => {
-						let color = (((cellValue + 85 * k) % 510) + 510) % 510;
-						return color > 255 ? 510 - color : color;
-					});
-
-				ctx.fillStyle = `rgb(${colors.join(",")})`;
-				ctx.fillRect(size * a, size * b, size, size);
-			}
-		}
 	};
 
 	render = () => {
@@ -262,10 +224,12 @@ class App extends React.Component {
 						{!polar && <span>0</span>}
 					</div>
 					<div style={{ display: "flex", flexDirection: "column" }}>
-						<canvas
-							ref="canvas"
-							width={size * rowSize}
-							height={size * rowSize}
+						<ShadertoyReact
+							fs={fs}
+							style={{
+								width: size * rowSize,
+								height: size * rowSize,
+							}}
 						/>
 						<div style={xAxisStyle}>
 							{!polar && <span>0</span>}
@@ -280,3 +244,74 @@ class App extends React.Component {
 }
 
 export default App;
+
+const fs = `
+#define PI 3.14159265359
+
+// References:
+// https://www.shadertoy.com/view/ldjcDD
+
+vec3 hsl2rgb( in vec3 c )
+{
+    vec3 rgb = clamp( abs(mod(c.x*6.0+vec3(0.0,4.0,2.0),6.0)-3.0)-1.0, 0.0, 1.0 );
+
+    return c.z + c.y * (rgb-0.5)*(1.0-abs(2.0*c.z-1.0));
+}
+
+
+void mainImage( out vec4 fragColor, in vec2 fragCoord )
+{
+
+    // normalized
+    vec2 p = vec2(fragCoord.xy / iResolution.xy);
+
+    // Polar coordinates:
+    // https://www.shadertoy.com/view/ltlXRf
+    vec2 relativePos = fragCoord.xy - (iResolution.xy / 2.0);
+    vec2 polar;
+    polar.y = sqrt(relativePos.x * relativePos.x + relativePos.y * relativePos.y);
+    polar.y /= iResolution.x / 2.0;
+    polar.y = 1.0 - polar.y;
+
+    polar.x = atan(relativePos.y, relativePos.x);
+    polar.x -= 1.57079632679;
+    if(polar.x < 0.0){
+		polar.x += 6.28318530718;
+    }
+    polar.x /= 6.28318530718;
+    polar.x = 1.0 - polar.x;
+
+    // Radius is also 0-1.
+    // Angle is not in radians, but 0-1.
+
+
+    float speed = 1. / 1000.;
+    float osc = 0.5; //sin(iTime * speed);
+
+    float size = 20.;
+
+
+    float n_min = 20.0;
+    float n_max = 100.0;
+    float n = n_min + osc*(n_max - n_min);
+
+    float r = polar.y * size;
+    float t = polar.x * 2. * PI;
+
+    float x = fragCoord.x / iResolution.x * size;
+    float y = fragCoord.y / iResolution.x * size;
+
+
+    // Cartesian example
+    float v = (pow(x,2.) + pow(y,2.)) * n;
+
+    // Polar Example
+    // (r ^ 2 + t) ^ 2 / (100 * n)
+    // float v = pow(pow(r, 2.) + pow(mod(n,cos(t)), 2.), 2.);
+
+
+    float hue = mod(v, 1.0);
+   	vec3 rgb = hsl2rgb(vec3(hue, 1.0, 0.6));
+    fragColor = vec4(rgb, 1.0);
+}
+`;
