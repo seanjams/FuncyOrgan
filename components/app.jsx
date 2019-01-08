@@ -3,19 +3,17 @@ import math from "mathjs";
 
 // cool funcs to try:
 //
-// rectangular:
 // (x^2 + y^2) * n,
 // ((x^2 + n^2) + x * y^2) / 10
 // ((x + y) ^ 2 - x ^ 2 - y ^ 2) * 1.27
 // (n^3+x*n+y) ^ (1/2)
 // (pow(x,2.0) + pow(y,3.0)) * pow(n,2.0)
-//
-// polar:
 // (r^ 2 + t) ^ 2 / 1000
 // 1000 * t * x
 // 100 * (sin(a / 10) + cos(b / 10))
 // 1000 * sin(r/100) + 1000 * cos(n * t)
 // pow(pow(r, 2.1) + pow(t, mod(x, r)), (1.6 * x) / 100.0 / 1000.0);
+// r * (sin(sin(x/n) + cos(y/n)) - cos(sin(x*y/n^2)+cos(x/n)))
 
 const sliderStyle = {
 	width: "100%",
@@ -41,6 +39,73 @@ const exampleStyle = {
 };
 
 const opWhiteList = new Set(["+", "-", "*", "/"]);
+
+const fallbackCopyTextToClipboard = text => {
+	const textArea = document.createElement("textarea");
+	textArea.value = text;
+	document.body.appendChild(textArea);
+	textArea.focus();
+	textArea.select();
+
+	try {
+		const successful = document.execCommand("copy");
+		const msg = successful ? "successful" : "unsuccessful";
+		console.log("Fallback: Copying text command was " + msg);
+	} catch (err) {
+		console.error("Fallback: Oops, unable to copy", err);
+	}
+
+	document.body.removeChild(textArea);
+};
+
+const onCopyToClipboard = text => {
+	if (!navigator.clipboard) {
+		fallbackCopyTextToClipboard(text);
+		return;
+	}
+	navigator.clipboard.writeText(text).then(
+		() => {
+			console.log("Async: Copying to clipboard was successful!");
+		},
+		err => {
+			console.error("Async: Could not copy text: ", err);
+		}
+	);
+};
+
+// Takes notmal math and turns it into GLSL math.
+const exprToGlsl = expr => {
+	const n = math.parse(expr);
+
+	const buildExpr = n => {
+		if (typeof n.value === "number") {
+			if (n % 1 !== 0) {
+				return n.toString();
+			} else {
+				return n.toString() + ".";
+			}
+		} else if (n.fn) {
+			if (opWhiteList.has(n.op)) {
+				return buildExpr(n.args[0]) + " " + n.op + " " + buildExpr(n.args[1]);
+			} else {
+				return n.fn + "(" + n.args.map(buildExpr).join(", ") + ")";
+			}
+		} else if (n.name) {
+			return n.name;
+		} else if (n.content) {
+			return "(" + buildExpr(n.content) + ")";
+		} else {
+			console.error("Unknown node", n);
+		}
+	};
+
+	try {
+		return buildExpr(n);
+	} catch (e) {
+		console.error("Parsing Error", e);
+		return false;
+	}
+};
 
 class App extends React.Component {
 	constructor(props) {
@@ -88,79 +153,16 @@ class App extends React.Component {
 		this.updateCanvas();
 	};
 
-	static fallbackCopyTextToClipboard = text => {
-		const textArea = document.createElement("textarea");
-		textArea.value = text;
-		document.body.appendChild(textArea);
-		textArea.focus();
-		textArea.select();
-
-		try {
-			const successful = document.execCommand("copy");
-			const msg = successful ? "successful" : "unsuccessful";
-			console.log("Fallback: Copying text command was " + msg);
-		} catch (err) {
-			console.error("Fallback: Oops, unable to copy", err);
-		}
-
-		document.body.removeChild(textArea);
-	};
-
-	static onCopyToClipboard = text => {
-		if (!navigator.clipboard) {
-			App.fallbackCopyTextToClipboard(text);
-			return;
-		}
-		navigator.clipboard.writeText(text).then(
-			() => {
-				console.log("Async: Copying to clipboard was successful!");
-			},
-			err => {
-				console.error("Async: Could not copy text: ", err);
-			}
-		);
-	};
-
 	onSave = e => {
 		// save state to URL
-		window.location.hash = encodeURIComponent(JSON.stringify(this.state));
+		history.pushState(
+			"",
+			"FuncyOrgan",
+			`?q=${encodeURIComponent(JSON.stringify(this.state))}`
+		);
 
 		// copy to clipboard
-		App.onCopyToClipboard(window.location.href);
-	};
-
-	// Takes notmal math and turns it into GLSL math.
-	exprToGlsl= (expr) => {
-		const n = math.parse(expr);
-
-		const buildExpr = n => {
-			if (typeof n.value === "number") {
-				if (n % 1 !== 0) {
-					return n.toString();
-				} else {
-					return n.toString() + ".";
-				}
-			} else if (n.fn) {
-				if (opWhiteList.has(n.op)) {
-					return buildExpr(n.args[0]) + " " + n.op + " " + buildExpr(n.args[1]);
-				} else {
-					return n.fn + "(" + n.args.map(buildExpr).join(", ") + ")";
-				}
-			} else if (n.name) {
-				return n.name;
-			} else if (n.content) {
-				return "(" + buildExpr(n.content) + ")";
-			} else {
-				console.error("Unknown node", n);
-			}
-		};
-
-		try {
-			return buildExpr(n);
-		} catch (e) {
-			console.error("Parsing Error", e);
-			return false;
-		}
+		onCopyToClipboard(window.location.href);
 	};
 
 	getFragmentFunction = () => {
@@ -169,7 +171,7 @@ class App extends React.Component {
 		const n = parseInt(this.state.value).toFixed(1);
 		const modulo = parseInt(this.state.modulo).toFixed(1);
 
-		func = this.exprToGlsl(func);
+		func = exprToGlsl(func);
 		if (!func) return false;
 
 		const frag = `
@@ -284,14 +286,7 @@ class App extends React.Component {
 	};
 
 	render = () => {
-		const {
-			rowSize,
-			func,
-			range,
-			value,
-			modulo,
-			modRange,
-		} = this.state;
+		const { rowSize, func, range, value, modulo, modRange } = this.state;
 
 		const containerStyle = {
 			width: rowSize + 30,
@@ -345,16 +340,16 @@ class App extends React.Component {
 						function below.
 						<br />
 						<br />
-						Use the input to write a function of up to 5 variables, using the four
-						coordinate variables (x, y, r, t), and an input variable (n), as
-						well as any constants. After clicking refresh, each pixel will be
+						Use the input to write a function of up to 5 variables, using the
+						four coordinate variables (x, y, r, t), and an input variable (n),
+						as well as any constants. After clicking refresh, each pixel will be
 						assigned its own version of this function obtained by plugging in
 						its coordinates. This builds a 2 dimensional field of continous
-						functions of n with gradually changing parameters. Use the sliders to
-						change the value for n and evaluate the pixels. The results map to
-						integers, which map to colors on the spectrum. Use the modulo slider
-						to adjust the scale of the mapping. Some of the designs can be pretty
-						freakin' sweet.
+						functions of n with gradually changing parameters. Use the sliders
+						to change the value for n and evaluate the pixels. The results map
+						to integers, which map to colors on the spectrum. Use the modulo
+						slider to adjust the scale of the mapping. Some of the designs can
+						be pretty freakin' sweet.
 						<br />
 						<br />
 						Eventually I want a version using actual animation software, and a

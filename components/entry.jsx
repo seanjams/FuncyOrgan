@@ -13,16 +13,11 @@ document.addEventListener("DOMContentLoaded", () => {
 	document.body.appendChild(root);
 	document.head.appendChild(meta);
 
-	let state;
 	try {
-		state = JSON.parse(decodeURIComponent(window.location.hash.slice(1)));
-	} catch (e) {
-		console.warn("Unable to parse state from url, resorting to default");
-	}
-
-	if (state && typeof state === "object") {
+		let state = JSON.parse(decodeURIComponent(window.location.search.slice(3)));
 		ReactDOM.render(<App state={state} />, root);
-	} else {
+	} catch (e) {
+		console.warn("Unable to parse state from url, resorting to default", e);
 		ReactDOM.render(<App />, root);
 	}
 });
