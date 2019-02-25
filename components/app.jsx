@@ -15,6 +15,11 @@ const titleContainerStyle = {
 	height: "40px",
 };
 
+const linkContainerStyle = {
+	display: "flex",
+	justifyContent: "flex-end",
+};
+
 const descriptionContainerStyle = {
 	height: "660px",
 	overflowY: "auto",
@@ -37,11 +42,9 @@ const sliderStyle = {
 };
 
 const historyContainerStyle = {
-	minHeight: "100px",
-	maxHeight: "400px",
+	height: "240px",
+	maxHeight: "240px",
 	width: "350px",
-	display: "flex",
-	flexDirection: "column",
 	border: "1px solid #333",
 	overflowY: "auto",
 	boxSizing: "border-box",
@@ -112,8 +115,6 @@ const onCopyToClipboard = text => {
 
 // Takes normal math and turns it into GLSL math.
 const exprToGlsl = expr => {
-	const n = math.parse(expr);
-
 	const buildExpr = n => {
 		if (typeof n.value === "number") {
 			if (n % 1 !== 0) {
@@ -137,6 +138,7 @@ const exprToGlsl = expr => {
 	};
 
 	try {
+		const n = math.parse(expr);
 		return buildExpr(n);
 	} catch (e) {
 		console.error("Parsing Error", e);
@@ -149,29 +151,25 @@ class App extends React.Component {
 		super(props);
 		this.state = {
 			rowSize: 700,
-			func: "(r ^ 2 + t) ^ 2 / (100.0 * n)",
+			func: "(r ^ 2 + t) ^ 2 / (100 * n)",
 			range: 100,
 			value: 50,
 			modRange: 1000,
 			polar: false,
 			modulo: 500,
-			// funcHistory: [
-			// 	"(x ^ 2 + y ^ 2) * n",
-			// 	"((x ^ 2 + n ^ 2) + x * y ^ 2) / 10",
-			// 	"((x + y) ^ 2 - x ^ 2 - y ^ 2) * 1.27",
-			// 	"(n ^ 3 + x * n + y) ^ (1 / 2)",
-			// 	"x ^ 2 + y ^ 3 * n ^ 2",
-			// 	"(r ^ 2 + t) ^ 2 / 1000",
-			// 	"1000 * t * x",
-			// 	"100 * (sin(x / 10) + cos(y / 10))",
-			// 	"1000 * sin(r/100) + 1000 * cos(n * t)",
-			// 	"(r ^ 2.1 + t ^ (x % r)) ^ ((1.6 * x) / 100.0 / 1000.0)",
-			// 	"r * (sin(sin(x / n) + cos(y / n)) - cos(sin(x * y / n ^ 2) + cos(x / n)))",
-			// 	"n * (sin(x ^ 2 / 100 + 2 * x * y / 100) - sin(x / 100 - 2 * y / 100))",
-			// 	"n * sin(cos(tan(x / n))) * sin(cos(tan(y / n)))",
-			// ],
-			funcHistory: [],
-			historySelectedIndex: null,
+			funcHistory: [
+				"(r ^ 2 + t) ^ 2 / (100 * n)",
+				"(x ^ 2 + y ^ 2) * n",
+				"((x ^ 2 + n ^ 2) + x * y ^ 2) / 10",
+				"x ^ 2 + y ^ 3 * n ^ 2",
+				"100 * (sin(x / 10) + cos(y / 10))",
+				"1000 * sin(r/100) + 1000 * cos(n * t)",
+				"r * (sin(sin(x / n) + cos(y / n)) - cos(sin(x * y / n ^ 2) + cos(x / n)))",
+				"n * (sin(x ^ 2 / 100 + 2 * x * y / 100) - sin(x / 100 - 2 * y / 100))",
+				"n * sin(cos(tan(x / n))) * sin(cos(tan(y / n)))",
+			],
+			historySelectedIndex: 0,
+			details: true,
 		};
 	}
 
@@ -180,12 +178,12 @@ class App extends React.Component {
 			this.getWebGlContext();
 			this.updateCanvas();
 		});
-		window.addEventListener("onbeforeunload", this.saveToLocalStorage);
+		window.addEventListener("beforeunload", this.saveToLocalStorage);
 	};
 
 	componentWillUnmount = () => {
 		this.saveToLocalStorage();
-		removeEventListener(this.saveToLocalStorage);
+		window.removeEventListener("beforeunload", this.saveToLocalStorage);
 	};
 
 	rehydrateState = cb => {
@@ -254,21 +252,22 @@ class App extends React.Component {
 	};
 
 	onRefresh = e => {
-		if (e) {
-			if (e.type === "keypress" && e.key !== "Enter") return false;
+		if (e && e.type === "keypress" && e.key !== "Enter") return false;
+		const success = this.updateCanvas();
+		if (e && success) {
 			const val = this.state.func;
 			const funcHistory = [...this.state.funcHistory];
 			if (funcHistory.includes(val)) {
 				funcHistory.splice(funcHistory.indexOf(val), 1);
 			}
 			funcHistory.unshift(val);
-			this.setState(
-				{ funcHistory, historySelectedIndex: 0 },
-				this.updateCanvas
-			);
-		} else {
-			this.updateCanvas();
+			this.setState({ funcHistory, historySelectedIndex: 0 });
 		}
+	};
+
+	onClearCache = () => {
+		localStorage.clear();
+		this.setState({ funcHistory: [], historySelectedIndex: null });
 	};
 
 	onSaveToClipboard = e => {
@@ -401,6 +400,8 @@ class App extends React.Component {
 		gl.useProgram(program);
 		// draw pixels
 		gl.drawArrays(gl.TRIANGLE_STRIP, 0, positions.length / 2);
+
+		return true;
 	};
 
 	render = () => {
@@ -429,54 +430,87 @@ class App extends React.Component {
 							Save To Clipboard
 						</button>
 					</div>
+					<div style={linkContainerStyle}>
+						<a
+							style={{ color: "#07f", textDecoration: "none" }}
+							href="https://github.com/seanjams/FuncyOrgan"
+							target="_blank"
+							rel="noopener noreferrer"
+						>
+							source
+						</a>
+					</div>
 					<div style={descriptionContainerStyle}>
 						<p style={{ width: "100%", fontSize: "13px" }}>
 							This started out as an idea for a color organ. Currently it's just
-							a cool way to graph things.
+							a cool way to plot functions with your graphics card, and my first
+							real exploration of the OpenGL coding language.
 							<br />
 							<br />
-							<strong>How it works</strong>
+							<strong>
+								How it works (
+								<span
+									style={{ color: "#07f", cursor: "pointer" }}
+									onClick={this.onToggle("details")}
+								>
+									{this.state.details ? "collapse" : "expand"}
+								</span>
+								)
+							</strong>
 							<br />
 							<br />
-							We have an x-y grid labeled from -350 to +350 in both directions.
-							Every pixel of the grid has 4 coordinate values,{" "}
-							<strong>(x, y, r, t)</strong>, where <strong>x</strong> and{" "}
-							<strong>y</strong> are the Cartesian coordinates and{" "}
-							<strong>r</strong> and <strong>t</strong> are the polar
-							coordinates.
-							<br />
-							<br />
-							Every pixel also has a single color, which comes from a number.
-							This number is computed by whatever function you type in below.
-							Treat it like a graphing calculator. You can use your 4 coordinate
-							variables and an additional integer variable <strong>n</strong>.
-							You can control <strong>n</strong> with a slider and watch your
-							image change.
-							<br />
-							<br />
-							Lastly, you'll notice another slider for <strong>mod</strong>.
-							Basically, whatever number your function outputs for a given pixel
-							needs to be mapped to a color on the spectrum. This is done
-							modularly to account for very large and negative numbers, with a
-							modulus defined by this slider.
+							{this.state.details && (
+								<span>
+									We have a grid labeled from -350 to +350 in both directions.
+									Every pixel of the grid has 4 coordinate values,{" "}
+									<strong>(x, y, r, t)</strong>, where <strong>x</strong> and{" "}
+									<strong>y</strong> are the Cartesian coordinates and{" "}
+									<strong>r</strong> and <strong>t</strong> are the polar
+									coordinates.
+									<br />
+									<br />
+									Every pixel also has a single color, which comes from a
+									number. This number is computed by whatever function you type
+									in below. Treat it like a graphing calculator. You can use
+									your 4 coordinate variables and an additional integer variable{" "}
+									<strong>n</strong>. You can control <strong>n</strong> with a
+									slider and watch your image change.
+									<br />
+									<br />
+									You'll notice another slider for <strong>mod</strong>.
+									Basically, whatever number your function outputs for a given
+									pixel needs to be mapped to a color on the spectrum. This is
+									done modularly to account for large and negative numbers, with
+									a modulus defined by this slider.
+									<br />
+									<br />
+									Lastly, if you'd like to share a cool function with me
+									(seanvoreilly2@gmail.com) or anyone else, click Save To
+									Clipboard and paste the URL in a message. I loaded your
+									history with some dope ones.
+								</span>
+							)}
 						</p>
-
-						<p>
-							<u>Ex:</u>
-						</p>
-						<br />
-						<div style={exampleStyle}>
-							<em>(Rectangular)</em>
-							<span style={{ letterSpacing: "1.5px" }}>
-								f(x,y,n) = (x^2 + y^2) * n
-							</span>
-						</div>
-						<div style={exampleStyle}>
-							<em>(Polar)</em>
-							<span style={{ letterSpacing: "1.5px" }}>
-								f(r,t,n) = (r^ 2 + t) ^ 2 / (100 * n)
-							</span>
-						</div>
+						{this.state.details && (
+							<div>
+								<p>
+									<u>Ex:</u>
+								</p>
+								<br />
+								<div style={exampleStyle}>
+									<em>(Rectangular)</em>
+									<span style={{ letterSpacing: "1.5px" }}>
+										f(x,y,n) = (x^2 + y^2) * n
+									</span>
+								</div>
+								<div style={exampleStyle}>
+									<em>(Polar)</em>
+									<span style={{ letterSpacing: "1.5px" }}>
+										f(r,t,n) = (r^ 2 + t) ^ 2 / (100 * n)
+									</span>
+								</div>
+							</div>
+						)}
 						<div style={sliderContainerStyle}>
 							<div style={{ display: "flex", alignItems: "center" }}>
 								<label
@@ -494,7 +528,7 @@ class App extends React.Component {
 									onKeyPress={this.onRefresh}
 								/>
 							</div>
-							<div style={{ display: "flex", justifyContent: "flex-end" }}>
+							<div style={linkContainerStyle}>
 								<button onClick={this.onRefresh}>Refresh</button>
 							</div>
 						</div>
@@ -544,19 +578,24 @@ class App extends React.Component {
 							<strong>History</strong>
 						</p>
 						<div style={historyContainerStyle}>{this.historyRows()}</div>
+						<div style={linkContainerStyle}>
+							<button style={{ height: "20px" }} onClick={this.onClearCache}>
+								Clear Cache
+							</button>
+						</div>
 					</div>
 				</div>
 				<div style={canvasContainerStyle}>
 					<div style={yAxisStyle}>
 						<span>{`${rowSize / 2}`}</span>
-						<span>b</span>
+						<span>0</span>
 						<span>{`-${rowSize / 2}`}</span>
 					</div>
 					<div style={{ display: "flex", flexDirection: "column" }}>
 						<canvas ref="canvas" width={rowSize} height={rowSize} />
 						<div style={xAxisStyle}>
 							<span>{`-${rowSize / 2}`}</span>
-							<span>a</span>
+							<span>0</span>
 							<span>{`${rowSize / 2}`}</span>
 						</div>
 					</div>
