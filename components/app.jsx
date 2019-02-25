@@ -1,41 +1,78 @@
 import React from "react";
 import math from "mathjs";
 
-// cool funcs to try:
-//
-// (x^2 + y^2) * n,
-// ((x^2 + n^2) + x * y^2) / 10
-// ((x + y) ^ 2 - x ^ 2 - y ^ 2) * 1.27
-// (n^3+x*n+y) ^ (1/2)
-// (pow(x,2.0) + pow(y,3.0)) * pow(n,2.0)
-// (r^ 2 + t) ^ 2 / 1000
-// 1000 * t * x
-// 100 * (sin(a / 10) + cos(b / 10))
-// 1000 * sin(r/100) + 1000 * cos(n * t)
-// pow(pow(r, 2.1) + pow(t, mod(x, r)), (1.6 * x) / 100.0 / 1000.0);
-// r * (sin(sin(x/n) + cos(y/n)) - cos(sin(x*y/n^2)+cos(x/n)))
-
-const sliderStyle = {
-	width: "100%",
+const containerStyle = {
+	margin: "30px 0 0 30px",
+	display: "flex",
+	fontFamily: "Helvetica",
+	fontSize: "12px",
 };
 
-const canvasContainerStyle = {
-	width: "100%",
-	height: "100%",
+const titleContainerStyle = {
 	display: "flex",
+	justifyContent: "space-between",
+	alignItems: "center",
+	height: "40px",
 };
 
-const sliderContainerStyle = {
-	display: "flex",
-	flexDirection: "column",
-	margin: "30px 0 40px 30px",
-	width: "350px",
+const descriptionContainerStyle = {
+	height: "660px",
+	overflowY: "auto",
 };
 
 const exampleStyle = {
 	display: "flex",
 	justifyContent: "space-between",
 	marginBottom: "10px",
+};
+
+const sliderContainerStyle = {
+	display: "flex",
+	flexDirection: "column",
+	margin: "30px 0 40px 30px",
+};
+
+const sliderStyle = {
+	width: "100%",
+};
+
+const historyContainerStyle = {
+	minHeight: "100px",
+	maxHeight: "400px",
+	width: "350px",
+	display: "flex",
+	flexDirection: "column",
+	border: "1px solid #333",
+	overflowY: "auto",
+	boxSizing: "border-box",
+};
+
+const historyRowStyle = {
+	width: "calc(100% - 10px)",
+	height: "20px",
+	color: "#333",
+	display: "flex",
+	alignItems: "center",
+	padding: "5px",
+	overflow: "hidden",
+	whiteSpace: "nowrap",
+};
+
+const xAxisStyle = {
+	width: "100%",
+	display: "flex",
+	justifyContent: "space-between",
+	paddingTop: "5px",
+};
+
+const yAxisStyle = {
+	paddingRight: "5px",
+	display: "flex",
+	justifyContent: "space-between",
+	flexDirection: "column",
+	textAlign: "right",
+	width: "30px",
+	height: "100%",
 };
 
 const opWhiteList = new Set(["+", "-", "*", "/"]);
@@ -73,7 +110,7 @@ const onCopyToClipboard = text => {
 	);
 };
 
-// Takes notmal math and turns it into GLSL math.
+// Takes normal math and turns it into GLSL math.
 const exprToGlsl = expr => {
 	const n = math.parse(expr);
 
@@ -118,14 +155,82 @@ class App extends React.Component {
 			modRange: 1000,
 			polar: false,
 			modulo: 500,
+			// funcHistory: [
+			// 	"(x ^ 2 + y ^ 2) * n",
+			// 	"((x ^ 2 + n ^ 2) + x * y ^ 2) / 10",
+			// 	"((x + y) ^ 2 - x ^ 2 - y ^ 2) * 1.27",
+			// 	"(n ^ 3 + x * n + y) ^ (1 / 2)",
+			// 	"x ^ 2 + y ^ 3 * n ^ 2",
+			// 	"(r ^ 2 + t) ^ 2 / 1000",
+			// 	"1000 * t * x",
+			// 	"100 * (sin(x / 10) + cos(y / 10))",
+			// 	"1000 * sin(r/100) + 1000 * cos(n * t)",
+			// 	"(r ^ 2.1 + t ^ (x % r)) ^ ((1.6 * x) / 100.0 / 1000.0)",
+			// 	"r * (sin(sin(x / n) + cos(y / n)) - cos(sin(x * y / n ^ 2) + cos(x / n)))",
+			// 	"n * (sin(x ^ 2 / 100 + 2 * x * y / 100) - sin(x / 100 - 2 * y / 100))",
+			// 	"n * sin(cos(tan(x / n))) * sin(cos(tan(y / n)))",
+			// ],
+			funcHistory: [],
+			historySelectedIndex: null,
 		};
 	}
 
 	componentDidMount = () => {
-		const state = this.props.state ? this.props.state : this.state;
-		this.setState(state, () => {
+		this.rehydrateState(() => {
 			this.getWebGlContext();
 			this.updateCanvas();
+		});
+		window.addEventListener("onbeforeunload", this.saveToLocalStorage);
+	};
+
+	componentWillUnmount = () => {
+		this.saveToLocalStorage();
+		removeEventListener(this.saveToLocalStorage);
+	};
+
+	rehydrateState = cb => {
+		let newState = {};
+		for (let key in this.state) {
+			if (this.props.state && key !== "funcHistory") {
+				newState[key] = this.props.state[key];
+			} else if (localStorage.hasOwnProperty(key)) {
+				let val = localStorage.getItem(key);
+				try {
+					val = JSON.parse(val);
+					newState[key] = val;
+				} catch (e) {
+					newState[key] = this.state[key];
+				}
+			}
+		}
+
+		this.setState(newState, cb);
+	};
+
+	saveToLocalStorage = () => {
+		for (let key in this.state) {
+			localStorage.setItem(key, JSON.stringify(this.state[key]));
+		}
+	};
+
+	loadHistoryRow = i => e => {
+		e.preventDefault();
+		const func = this.state.funcHistory[i];
+		this.setState({ func, historySelectedIndex: i }, this.onRefresh);
+	};
+
+	historyRows = () => {
+		return this.state.funcHistory.map((func, i) => {
+			let rowStyle = { ...historyRowStyle };
+			if (i === this.state.historySelectedIndex) {
+				rowStyle.background = "#0bf";
+			}
+
+			return (
+				<div style={rowStyle} key={i} onClick={this.loadHistoryRow(i)}>
+					{func}
+				</div>
+			);
 		});
 	};
 
@@ -149,11 +254,24 @@ class App extends React.Component {
 	};
 
 	onRefresh = e => {
-		if (e.type === "keypress" && e.key !== "Enter") return false;
-		this.updateCanvas();
+		if (e) {
+			if (e.type === "keypress" && e.key !== "Enter") return false;
+			const val = this.state.func;
+			const funcHistory = [...this.state.funcHistory];
+			if (funcHistory.includes(val)) {
+				funcHistory.splice(funcHistory.indexOf(val), 1);
+			}
+			funcHistory.unshift(val);
+			this.setState(
+				{ funcHistory, historySelectedIndex: 0 },
+				this.updateCanvas
+			);
+		} else {
+			this.updateCanvas();
+		}
 	};
 
-	onSave = e => {
+	onSaveToClipboard = e => {
 		// save state to URL
 		history.pushState(
 			"",
@@ -288,155 +406,144 @@ class App extends React.Component {
 	render = () => {
 		const { rowSize, func, range, value, modulo, modRange } = this.state;
 
-		const containerStyle = {
-			width: rowSize + 30,
-			display: "flex",
-			margin: "30px",
-			fontFamily: "Helvetica",
-			fontSize: "12px",
-		};
-
-		const yAxisStyle = {
-			paddingRight: "5px",
-			display: "flex",
-			justifyContent: "space-between",
-			flexDirection: "column",
-			textAlign: "right",
-			width: "30px",
+		const canvasContainerStyle = {
+			width: rowSize + 35,
 			height: rowSize,
-			fontSize: "16px",
-			fontWeight: 600,
-		};
-
-		const xAxisStyle = {
-			width: "100%",
 			display: "flex",
-			justifyContent: "space-between",
-			paddingTop: "5px",
 			fontSize: "16px",
 			fontWeight: 600,
 		};
 
 		return (
 			<div style={containerStyle}>
-				<div style={{ marginRight: "30px" }}>
-					<div
-						style={{
-							display: "flex",
-							justifyContent: "space-between",
-							alignItems: "center",
-						}}
-					>
+				<div
+					style={{
+						marginRight: "30px",
+						width: "350px",
+						minWidth: "350px",
+					}}
+				>
+					<div style={titleContainerStyle}>
 						<h2>FuncyOrgan</h2>
-						<button style={{ height: "20px" }} onClick={this.onSave}>
+						<button style={{ height: "20px" }} onClick={this.onSaveToClipboard}>
 							Save To Clipboard
 						</button>
 					</div>
-					<p style={{ width: "100%", fontSize: "12px" }}>
-						This is a prototype for a kind of color organ I want to make. Every
-						pixel of the grid has a corresponding (x,y) point in rectangular
-						coordinates, or (r,t) point in polar coordinates, and displays a
-						color based on a single numerical input, which we compute using the
-						function below.
+					<div style={descriptionContainerStyle}>
+						<p style={{ width: "100%", fontSize: "13px" }}>
+							This started out as an idea for a color organ. Currently it's just
+							a cool way to graph things.
+							<br />
+							<br />
+							<strong>How it works</strong>
+							<br />
+							<br />
+							We have an x-y grid labeled from -350 to +350 in both directions.
+							Every pixel of the grid has 4 coordinate values,{" "}
+							<strong>(x, y, r, t)</strong>, where <strong>x</strong> and{" "}
+							<strong>y</strong> are the Cartesian coordinates and{" "}
+							<strong>r</strong> and <strong>t</strong> are the polar
+							coordinates.
+							<br />
+							<br />
+							Every pixel also has a single color, which comes from a number.
+							This number is computed by whatever function you type in below.
+							Treat it like a graphing calculator. You can use your 4 coordinate
+							variables and an additional integer variable <strong>n</strong>.
+							You can control <strong>n</strong> with a slider and watch your
+							image change.
+							<br />
+							<br />
+							Lastly, you'll notice another slider for <strong>mod</strong>.
+							Basically, whatever number your function outputs for a given pixel
+							needs to be mapped to a color on the spectrum. This is done
+							modularly to account for very large and negative numbers, with a
+							modulus defined by this slider.
+						</p>
+
+						<p>
+							<u>Ex:</u>
+						</p>
 						<br />
-						<br />
-						Use the input to write a function of up to 5 variables, using the
-						four coordinate variables (x, y, r, t), and an input variable (n),
-						as well as any constants. After clicking refresh, each pixel will be
-						assigned its own version of this function obtained by plugging in
-						its coordinates. This builds a 2 dimensional field of continous
-						functions of n with gradually changing parameters. Use the sliders
-						to change the value for n and evaluate the pixels. The results map
-						to integers, which map to colors on the spectrum. Use the modulo
-						slider to adjust the scale of the mapping. Some of the designs can
-						be pretty freakin' sweet.
-						<br />
-						<br />
-						Eventually I want a version using actual animation software, and a
-						lot more pixels. The slider input is just a placeholder for an audio
-						input in phase 2 of this project. I want the values for sound
-						frequencies to control the color changes. Also, I might add more
-						functions and more inputs to make things even weirder.
-					</p>
-					<br />
-					<p>
-						<u>Ex:</u>
-					</p>
-					<br />
-					<div style={exampleStyle}>
-						<em>(Rectangular)</em>
-						<span style={{ letterSpacing: "1.5px" }}>
-							f(x,y,n) = (x^2 + y^2) * n
-						</span>
-					</div>
-					<div style={exampleStyle}>
-						<em>(Polar)</em>
-						<span style={{ letterSpacing: "1.5px" }}>
-							f(r,t,n) = (r^ 2 + t) ^ 2 / (100 * n)
-						</span>
-					</div>
-					<div style={sliderContainerStyle}>
-						<div style={{ display: "flex", alignItems: "center" }}>
-							<label
-								htmlFor="function"
-								style={{ paddingRight: "5px", letterSpacing: "1.5px" }}
-							>
-								<strong>f(x,y,r,t,n)=</strong>
-							</label>
-							<input
-								id="function"
-								type="text"
-								value={func}
-								style={{ width: "100%" }}
-								onChange={this.onChange("func", false)}
-								onKeyPress={this.onRefresh}
-							/>
+						<div style={exampleStyle}>
+							<em>(Rectangular)</em>
+							<span style={{ letterSpacing: "1.5px" }}>
+								f(x,y,n) = (x^2 + y^2) * n
+							</span>
 						</div>
-						<div style={{ display: "flex", justifyContent: "flex-end" }}>
-							<button onClick={this.onRefresh}>Refresh</button>
+						<div style={exampleStyle}>
+							<em>(Polar)</em>
+							<span style={{ letterSpacing: "1.5px" }}>
+								f(r,t,n) = (r^ 2 + t) ^ 2 / (100 * n)
+							</span>
 						</div>
-					</div>
-					<div style={sliderContainerStyle}>
-						<label htmlFor="range">n: {value}</label>
-						<div style={{ display: "flex" }}>
-							<input
-								style={sliderStyle}
-								type="range"
-								min="0"
-								max={range}
-								onChange={this.onChange("value")}
-								defaultValue={value}
-								id="range"
-							/>
-							<input
-								type="number"
-								value={range}
-								onChange={this.onChange("range")}
-								onKeyPress={this.onRefresh}
-								style={{ width: "50px" }}
-							/>
+						<div style={sliderContainerStyle}>
+							<div style={{ display: "flex", alignItems: "center" }}>
+								<label
+									htmlFor="function"
+									style={{ paddingRight: "5px", letterSpacing: "1.5px" }}
+								>
+									<strong>f(x,y,r,t,n)=</strong>
+								</label>
+								<input
+									id="function"
+									type="text"
+									value={func}
+									style={{ width: "100%" }}
+									onChange={this.onChange("func", false)}
+									onKeyPress={this.onRefresh}
+								/>
+							</div>
+							<div style={{ display: "flex", justifyContent: "flex-end" }}>
+								<button onClick={this.onRefresh}>Refresh</button>
+							</div>
 						</div>
-					</div>
-					<div style={sliderContainerStyle}>
-						<label htmlFor="range">modulo: {modulo}</label>
-						<div style={{ display: "flex" }}>
-							<input
-								style={sliderStyle}
-								type="range"
-								min="0"
-								max={modRange}
-								onChange={this.onChange("modulo")}
-								defaultValue={modulo}
-								id="range"
-							/>
-							<input
-								type="number"
-								value={modRange}
-								onChange={this.onChange("modRange")}
-								onKeyPress={this.onRefresh}
-								style={{ width: "50px" }}
-							/>
+						<div style={sliderContainerStyle}>
+							<label htmlFor="range">n: {value}</label>
+							<div style={{ display: "flex" }}>
+								<input
+									style={sliderStyle}
+									type="range"
+									min="0"
+									max={range}
+									onChange={this.onChange("value")}
+									defaultValue={value}
+									id="range"
+								/>
+								<input
+									type="number"
+									value={range}
+									onChange={this.onChange("range")}
+									onKeyPress={this.onRefresh}
+									style={{ width: "50px" }}
+								/>
+							</div>
 						</div>
+						<div style={sliderContainerStyle}>
+							<label htmlFor="range">modulo: {modulo}</label>
+							<div style={{ display: "flex" }}>
+								<input
+									style={sliderStyle}
+									type="range"
+									min="0"
+									max={modRange}
+									onChange={this.onChange("modulo")}
+									defaultValue={modulo}
+									id="range"
+								/>
+								<input
+									type="number"
+									value={modRange}
+									onChange={this.onChange("modRange")}
+									onKeyPress={this.onRefresh}
+									style={{ width: "50px" }}
+								/>
+							</div>
+						</div>
+						<p>
+							<strong>History</strong>
+						</p>
+						<div style={historyContainerStyle}>{this.historyRows()}</div>
 					</div>
 				</div>
 				<div style={canvasContainerStyle}>
